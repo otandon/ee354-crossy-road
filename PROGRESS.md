@@ -162,3 +162,36 @@ probe).
 - [ ] Holding a button gives one hop, not repeats.
 - [ ] Hopping into each of the four screen edges does nothing.
 - [ ] The chicken can walk over the static cars and river (no collisions yet).
+
+## Milestone 4: Scrolling
+
+**Built**
+- `src/lane_engine.v`: 15 `level_rom` instances in a generate loop (constant
+  row each), 15 offset registers updated per DESIGN 8.1 (wrap at 640 in both
+  directions), cleared by reset or `level_load`. `lane_r`/`off_r` are a
+  combinational row mux; `lane_p`/`off_p` are registered. Row 15 returns grass
+  at offset 0.
+- `crossy_top`: the renderer now reads `lane_r`/`off_r` from `lane_engine`
+  (level 1, every frame tick is a play tick), and `player_ctrl` gets `lane_p`
+  (not used until milestone 5).
+
+**Tests passing:** all previous, plus `tb_lane_engine` (for each level:
+lane_r equals level_rom for every row; every row's offset matches an integer
+model after each of 700 ticks, which crosses the wrap point moving right and
+left; no motion without play_tick; level_load and reset clear; lane_p/off_p
+equal the chicken row's values one clock later; row 15 is grass/0).
+Levels 2–5 are still all grass, so only speed 1 is exercised until
+milestone 8.
+
+**Unverified:** smoothness of motion on the monitor, synthesis, timing.
+
+**Board checks** (bring-up step 4)
+- [ ] Logs on row 5 drift right; cars on rows 10 and 12 drift left, about
+      10.7 s to cross the whole screen at 1 px/frame.
+- [ ] Cars and logs leave one edge and reappear at the other with no jump,
+      gap, or one-frame glitch at the wrap point; an object straddling the
+      edge is drawn split across both sides.
+- [ ] Motion is smooth with no tearing or shimmer (state changes only in
+      vertical blanking).
+- [ ] The chicken still hops; it passes through cars and stands on water
+      (no collisions yet).

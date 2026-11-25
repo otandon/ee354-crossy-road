@@ -1,8 +1,9 @@
 `timescale 1ns / 1ps
 `default_nettype none
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
-// Milestone 3: static level 1 playfield, plus buttons (debouncer x5,
-// input_latch) and a chicken that hops (player_ctrl) on every frame tick.
+// Milestone 4: level 1 playfield with scrolling lanes (lane_engine), buttons
+// (debouncer x5, input_latch) and a hopping chicken (player_ctrl). No state
+// machine yet: every frame tick is a play tick.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -66,25 +67,28 @@ module crossy_top(
   wire [3:0]  player_row;
   wire        at_goal, new_row, carried_off;
 
+  wire [3:0]  row_r;
+  wire [25:0] lane_r, lane_p;
+  wire [9:0]  off_r, off_p;
+
+  lane_engine lanes(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
+                    .level_load(1'b0), .level(FIRST_LEVEL),
+                    .row_r(row_r), .row_p(player_row),
+                    .lane_r(lane_r), .lane_p(lane_p), .off_r(off_r), .off_p(off_p));
+
   player_ctrl player(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
                      .respawn(1'b0), .level_load(1'b0),
                      .req_u(req_u), .req_d(req_d), .req_l(req_l), .req_r(req_r),
-                     .lane_p(LANE_GRASS),
+                     .lane_p(lane_p),
                      .player_x(player_x), .player_row(player_row),
                      .at_goal(at_goal), .new_row(new_row), .carried_off(carried_off));
 
   // ------------------------------------------------------------ picture
-  // Static level 1 playfield: one level_rom answers for the row being drawn,
-  // offsets are 0.
-  wire [3:0]  row_r;
   wire [9:0]  x, y;
-  wire [25:0] lane_r;
   wire [11:0] rgb;
 
-  level_rom rom_r(.level(FIRST_LEVEL), .row(row_r), .lane(lane_r));
-
   renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(S_PLAY),
-                .lane_r(lane_r), .off_r(10'd0), .player_x(player_x),
+                .lane_r(lane_r), .off_r(off_r), .player_x(player_x),
                 .player_row(player_row), .text_on(1'b0),
                 .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
