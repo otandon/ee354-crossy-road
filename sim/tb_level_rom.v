@@ -8,8 +8,8 @@
 module tb_level_rom;
 `include "crossy_defs.vh"
 
-  // Levels checked so far (milestone 2: level 1 only; milestone 8: all five).
-  localparam integer LEVELS_CHECKED = 1;
+  // Levels checked so far (all five since milestone 8).
+  localparam integer LEVELS_CHECKED = 5;
 
   reg  [2:0]  level;
   reg  [3:0]  row;

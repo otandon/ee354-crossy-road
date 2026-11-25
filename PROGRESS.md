@@ -323,3 +323,49 @@ broken tens carry) are caught.
 - [ ] After a death the chicken is on the start tile and the timer is full.
 - [ ] All eight digits steady, no ghosting or flicker.
 - [ ] Ld2–Ld0 show lives: three lit at start, one fewer per death.
+
+## Milestone 8: All five levels
+
+**Built**
+- `src/level_rom.v`: all five layouts from the DESIGN 5 table. Speeds are
+  named localparams (`L2_ROAD_EVEN` etc.) at the top of the file; patterns
+  come from the library in `crossy_defs.vh`. My choices where DESIGN leaves
+  it open (all tunable):
+  - "Alternating by row" speeds: even rows take the first value, odd rows
+    the second (L2 roads 1/2, L4 roads 2/3, L5 roads 3/4).
+  - Patterns: L1 as in the DESIGN example (river `LOG_A`, roads `CAR_A`,
+    `CAR_B`). L2 rivers `LOG_A`, `LOG_B`; roads `CAR_A`, `CAR_A`, `CAR_B`,
+    `CAR_B`. L3 rivers all `LOG_B`; roads alternate `CAR_A`/`CAR_B`.
+    L4 rivers alternate `LOG_B`/`LOG_C`; roads `CAR_C`, `CAR_B`, `CAR_A`
+    repeating. L5 rivers alternate `LOG_C`/`LOG_B`; roads mostly `CAR_C`
+    with `CAR_B`/`CAR_A` mixed in. `LOG_A` only in levels 1–2 and `CAR_C`/
+    `LOG_C` only in levels 4–5, as the pattern table suggests.
+
+**Tests passing:** all previous; `tb_level_rom` now checks all five levels
+(layout, directions, speeds, non-empty moving rows; G-10 holds: roads
+2/4/5/6/7, rivers 1/2/4/4/5, speed range 1/1–2/2/2–3/3–4); `tb_lane_engine`
+now exercises speeds 1–4 across the wrap point in both directions; new
+`tb_playthrough` (integration of game_fsm, player_ctrl, lane_engine and
+collision without the display): a look-ahead bot starts each level with SW
+and clears it, and before every tick an independent model of the DESIGN 8.2/
+8.3 rules predicts whether the chicken dies on the next tick; the RTL must
+agree. Result: every level cleared in the first game with no lives lost
+(levels 1–5 in 40–82 frames of bot play), 0 model mismatches. Run with
+`-P tb_playthrough.BLIND=1` (the bot hops up without looking) the RTL killed
+the chicken 45 times and the model predicted all 45, so the check is live.
+
+**What this does not show:** the bot sees the future perfectly, so
+"clearable" here means a safe path exists, not that a person can find it.
+Level 5 playability is a milestone 10 board item.
+
+**Board checks** (bring-up step 7)
+- [ ] With SW2..0 = 1..5 at the title, BtnC starts that level (display shows
+      the level number); SW = 0, 6 or 7 starts level 1.
+- [ ] Each level matches the DESIGN 5 layout table, top to bottom.
+- [ ] Each level is visibly busier or faster than the one before (G-10).
+- [ ] Every river row has logs; adjacent rows move in opposite directions
+      (odd rows right, even rows left).
+- [ ] Clearing a level shows the next one after about 2 s, with all lanes
+      restarted and the chicken on the start tile; clearing level 5 shows
+      the dark green WIN screen.
+- [ ] Level timers: 60, 60, 50, 45, 40 s.
