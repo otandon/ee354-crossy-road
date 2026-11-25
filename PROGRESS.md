@@ -56,6 +56,10 @@ port list, so each was resolved with the reading closest to DESIGN.md.
     be built, so milestone 1's `crossy_top` draws a static copy of the skeleton
     picture (red screen, white band at vCount 400–475) itself. It was replaced
     by the renderer in milestone 2.
+12. **The tick that ends PLAY.** `play_tick` is "`frame_tick` while in PLAY", so
+    on the frame tick on which the FSM enters DEATH or LEVEL_CLEAR the lanes
+    still advance one step and a pending hop still executes. This follows the
+    spec; the visible effect is at most one frame of motion.
 13. **`frame_tick` samples another clock's counter.** `vCount` is clocked by
     the skeleton's internally divided 25 MHz clock, and `crossy_top` compares
     it (`>= 516`) in the 100 MHz domain as DESIGN 6 specifies. Vivado does not
@@ -65,10 +69,6 @@ port list, so each was resolved with the reading closest to DESIGN.md.
     Because clk25 is derived from ClkPort, the sampling phase is fixed, so this
     either never happens or happens at the same place every frame. Left as
     specified; flagged as a board check (motion should be perfectly even).
-12. **The tick that ends PLAY.** `play_tick` is "`frame_tick` while in PLAY", so
-    on the frame tick on which the FSM enters DEATH or LEVEL_CLEAR the lanes
-    still advance one step and a pending hop still executes. This follows the
-    spec; the visible effect is at most one frame of motion.
 
 ## Milestone 1: Foundations
 
