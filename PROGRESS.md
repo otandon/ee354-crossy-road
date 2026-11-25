@@ -280,3 +280,46 @@ only) and checks the title screen in frame 1 and level 1 in frame 2.
       their initial positions). Clearing level 5 (SW = 5 at start) gives a
       dark green screen with LD9 lit; BtnC returns to the title.
 - [ ] CPU_RESET returns to the title from each of the seven states.
+
+## Milestone 7: Score, timer, display, LEDs
+
+**Built**
+- `src/game_fsm.v`: level timer (two BCD digits; loads 60/60/50/45/40 s on
+  game start, respawn and new level; one second per 60 play ticks; stops at
+  00; 00 in PLAY is a death) and BCD score (+10 on `play_tick && new_row`,
+  +100 on entering LEVEL_CLEAR, carries through hundreds and thousands;
+  cleared on game start, kept across deaths, levels and the end screens).
+- `src/ssd_driver.v`: from `counter.v`, eight digits on `refresh[19:17]`,
+  BCD in (no dividers), letter L, all anodes driven, reset added. Layout
+  An7..An0: `L`, level, timer tens, timer ones, score thousands, hundreds,
+  tens, `0`.
+- `crossy_top`: display wired to the driver. LEDs were finished in
+  milestone 6.
+
+**Tests passing:** all previous, plus `tb_score_timer` (timer loads for all
+five levels and SW = 0; 60 -> 59 borrow; 10 -> 09 borrow; a run-down to 00
+checks every step is -1 s in BCD and every second is exactly 60 play ticks;
+frozen in PAUSE and LEVEL_CLEAR; 00 kills and the respawn reloads with the
+sub-second count restarted; score 90 -> 100, 990 -> 1000, +100 with carry
+into thousands; new_row ignored without a tick and in PAUSE; goal on the tick
+the timer is 00 clears the level; new game clears score; reset clears both),
+`tb_ssd_driver` (two full scans: one anode at a time, order An0..An7, 2^17
+clocks each, every digit 0–9 and L correct), `tb_top` (adds: during play the
+display reads L1 60 0000 on all eight digits). Mutations (59-tick second,
+broken tens carry) are caught.
+
+**Unverified:** display brightness/ghosting, synthesis, timing.
+
+**Board checks** (bring-up step 6)
+- [ ] Title after reset: display reads `L1 00 0000` (level 1, timer 00,
+      score 0). After programming without a reset it reads `L0 00 0000`
+      (spec issue 9).
+- [ ] BtnC: `L1 60 0000`; the timer counts down once per second.
+- [ ] Each new row reached adds 10; hopping back and forward adds nothing;
+      reaching the top adds 10 for row 0 and then 100 for the level.
+- [ ] Pause freezes the timer; DEATH and LEVEL_CLEAR freeze it too.
+- [ ] Let the timer run out: at 00 the chicken dies and respawns with the
+      timer back at 60.
+- [ ] After a death the chicken is on the start tile and the timer is full.
+- [ ] All eight digits steady, no ghosting or flicker.
+- [ ] Ld2–Ld0 show lives: three lit at start, one fewer per death.

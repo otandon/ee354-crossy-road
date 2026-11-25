@@ -8,7 +8,9 @@
 //   * frame_tick is high for exactly one clock per frame, in vertical blanking,
 //   * a few probe pixels show the expected colors (the wiring from level_rom
 //     through the renderer to the VGA pins),
-//   * BtnC starts the game: frame 1 is the title screen, frame 2 is level 1.
+//   * BtnC starts the game: frame 1 is the title screen, frame 2 is level 1,
+//   * during play the seven-segment display reads "L1 60 0000" (level 1,
+//     60 s, score 0), each of the eight digits seen at least once.
 // BtnC's debouncer is shortened with defparam so a press fits in a frame;
 // the other four keep the real 21 ms settle time.
 module tb_top;
@@ -81,6 +83,25 @@ module tb_top;
     for (pi = 0; pi < NPROBE; pi = pi + 1) probe_hits[pi] = 0;
   end
 
+  // Expected segments {Ca..Cg} per anode (An0..An7) during level 1 play.
+  reg [6:0] ssd_want [0:7];
+  integer   ssd_hits [0:7];
+  integer   ssd_errors = 0;
+  integer   ai;
+  initial begin
+    ssd_want[0] = 7'b0000001;   // '0'
+    ssd_want[1] = 7'b0000001;   // score tens 0
+    ssd_want[2] = 7'b0000001;   // score hundreds 0
+    ssd_want[3] = 7'b0000001;   // score thousands 0
+    ssd_want[4] = 7'b0000001;   // timer ones 0
+    ssd_want[5] = 7'b0100000;   // timer tens 6
+    ssd_want[6] = 7'b1001111;   // level 1
+    ssd_want[7] = 7'b1110001;   // 'L'
+    for (ai = 0; ai < 8; ai = ai + 1) ssd_hits[ai] = 0;
+  end
+  wire [7:0] an_bus  = {An7, An6, An5, An4, An3, An2, An1, An0};
+  wire [6:0] seg_bus = {Ca, Cb, Cc, Cd, Ce, Cf, Cg};
+
   integer errors = 0;
   integer xz_errors = 0, rgb_errors = 0;
   integer h_toggles = 0, v_toggles = 0;
@@ -112,6 +133,17 @@ module tb_top;
             end
           end
         end
+      end
+      if (dut.state == S_PLAY) begin
+        for (ai = 0; ai < 8; ai = ai + 1)
+          if (an_bus == ~(8'd1 << ai)) begin
+            ssd_hits[ai] = ssd_hits[ai] + 1;
+            if (seg_bus !== ssd_want[ai]) begin
+              ssd_errors = ssd_errors + 1;
+              if (ssd_errors < 10)
+                $display("FAIL An%0d shows %b, expected %b", ai, seg_bus, ssd_want[ai]);
+            end
+          end
       end
       if (hSync !== last_h) h_toggles = h_toggles + 1;
       if (vSync !== last_v) v_toggles = v_toggles + 1;
@@ -172,7 +204,12 @@ module tb_top;
         errors = errors + 1;
         $display("FAIL probe %0d was never reached", pi);
       end
-    errors = errors + xz_errors + rgb_errors;
+    for (ai = 0; ai < 8; ai = ai + 1)
+      if (ssd_hits[ai] == 0) begin
+        errors = errors + 1;
+        $display("FAIL An%0d never lit during play", ai);
+      end
+    errors = errors + xz_errors + rgb_errors + ssd_errors;
     $display("hSync toggles %0d, vSync toggles %0d, frame_ticks %0d", h_toggles, v_toggles, ticks);
     if (errors == 0) $display("PASS tb_top");
     else             $display("FAIL tb_top");

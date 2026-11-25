@@ -1,10 +1,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
-// game_fsm -- game state, level, lives (DESIGN 7).
+// game_fsm -- game state, level, lives, timer and score (DESIGN 7, 8.5, 8.6).
 // Every transition except reset happens on a frame tick. Inside PLAY the
-// priority is goal, then death, then pause.
-// Milestone 6: states, lives, respawn, level progression. Score and timer
-// outputs are held at 0 until milestone 7, and the timer cannot yet kill.
+// priority is goal, then death, then pause. Score and timer are BCD.
 module game_fsm(
   input  wire       clk,
   input  wire       reset,
@@ -19,18 +17,19 @@ module game_fsm(
   output wire       play_tick,
   output reg        respawn,
   output reg        level_load,
-  output wire [3:0] score_th, score_h, score_t,       // BCD
-  output wire [3:0] timer_tens, timer_ones            // BCD seconds
+  output reg  [3:0] score_th, score_h, score_t,       // BCD; ones digit is always 0
+  output reg  [3:0] timer_tens, timer_ones            // BCD seconds
 );
 `include "crossy_defs.vh"
 
   reg [6:0] hold_cnt;                 // frames left in DEATH or LEVEL_CLEAR
+  reg [5:0] frame_cnt;                // play_ticks within the current second
 
   // ---------------------------------------------------------- events
   // Each is high for the single frame-tick cycle on which it happens.
   wire [2:0] start_level = (sw_level >= FIRST_LEVEL && sw_level <= LAST_LEVEL)
                            ? sw_level : FIRST_LEVEL;
-  wire timer_zero = 1'b0;             // milestone 7
+  wire timer_zero = (timer_tens == 4'd0) && (timer_ones == 4'd0);
   wire dying      = hit_car || in_water || carried_off || timer_zero;
 
   wire tick_title = frame_tick && (state == S_TITLE);
@@ -102,12 +101,84 @@ module game_fsm(
     end
   end
 
-  // ---------------------------------------------------------- score and timer
-  assign score_th   = 4'd0;
-  assign score_h    = 4'd0;
-  assign score_t    = 4'd0;
-  assign timer_tens = 4'd0;
-  assign timer_ones = 4'd0;
+  // ---------------------------------------------------------- timer (8.5)
+  // Loads the level's time on game start, on respawn and on a new level;
+  // counts down one second per FRAMES_PER_S play_ticks; stops at 00. Frozen
+  // whenever play_tick is low (pause, death, level clear).
+  function [7:0] level_time;
+    input [2:0] lv;
+    begin
+      case (lv)
+        3'd1:    level_time = TIME_L1;
+        3'd2:    level_time = TIME_L2;
+        3'd3:    level_time = TIME_L3;
+        3'd4:    level_time = TIME_L4;
+        3'd5:    level_time = TIME_L5;
+        default: level_time = TIME_L1;
+      endcase
+    end
+  endfunction
+
+  wire       timer_load = start_evt || respawn_evt || next_level_evt;
+  wire [2:0] load_level = start_evt      ? start_level :
+                          next_level_evt ? level + 3'd1 : level;
+
+  always @(posedge clk) begin
+    if (reset) begin
+      timer_tens <= 4'd0;
+      timer_ones <= 4'd0;
+      frame_cnt  <= 6'd0;
+    end else if (timer_load) begin
+      {timer_tens, timer_ones} <= level_time(load_level);
+      frame_cnt <= 6'd0;
+    end else if (play_tick) begin
+      if (frame_cnt == FRAMES_PER_S - 6'd1) begin
+        frame_cnt <= 6'd0;
+        if (!timer_zero) begin
+          if (timer_ones == 4'd0) begin
+            timer_ones <= 4'd9;
+            timer_tens <= timer_tens - 4'd1;
+          end else begin
+            timer_ones <= timer_ones - 4'd1;
+          end
+        end
+      end else begin
+        frame_cnt <= frame_cnt + 6'd1;
+      end
+    end
+  end
+
+  // ---------------------------------------------------------- score (8.6)
+  // +10 for a new row (play_tick && new_row), +100 for a cleared level, as
+  // BCD increments with carry. Cleared when a game starts. The two never
+  // coincide (a hop up from row 0 is impossible), but both are handled.
+  wire add_ten     = play_tick && new_row;
+  wire add_hundred = goal_evt;
+
+  reg [3:0] t_next, h_next, th_next;
+  reg [4:0] t_sum, h_sum;
+  reg       t_carry, h_carry;
+  always @(*) begin
+    t_sum   = {1'b0, score_t} + {4'd0, add_ten};
+    t_carry = (t_sum >= 5'd10);
+    t_next  = t_carry ? (t_sum[3:0] - 4'd10) : t_sum[3:0];
+    h_sum   = {1'b0, score_h} + {4'd0, add_hundred} + {4'd0, t_carry};
+    h_carry = (h_sum >= 5'd10);
+    h_next  = h_carry ? (h_sum[3:0] - 4'd10) : h_sum[3:0];
+    th_next = (h_carry && score_th == 4'd9) ? 4'd0 : score_th + {3'd0, h_carry};
+  end
+
+  always @(posedge clk) begin
+    if (reset || start_evt) begin
+      score_th <= 4'd0;
+      score_h  <= 4'd0;
+      score_t  <= 4'd0;
+    end else if (add_ten || add_hundred) begin
+      score_th <= th_next;
+      score_h  <= h_next;
+      score_t  <= t_next;
+    end
+  end
 
 endmodule
 `default_nettype wire

@@ -3,9 +3,8 @@
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
 // Pins, reset, frame_tick, and the wiring between the input, game-logic and
 // output modules (DESIGN 3 and 6).
-// Milestone 6: full game loop (title, play, pause, death, level clear, game
-// over, win) with lives. Score, timer and the seven-segment display come in
-// milestone 7.
+// Milestone 7: full game loop with lives, score, level timer, the
+// seven-segment display and the LEDs.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -120,10 +119,18 @@ module crossy_top(
                 .player_row(player_row), .text_on(1'b0),
                 .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
+  // ------------------------------------------------------------ seven-segment display
+  wire [7:0] an;
+  wire [6:0] seg;
+  ssd_driver ssd(.clk(ClkPort), .reset(reset), .level(level),
+                 .timer_tens(timer_tens), .timer_ones(timer_ones),
+                 .score_th(score_th), .score_h(score_h), .score_t(score_t),
+                 .an(an), .seg(seg));
+
   // ------------------------------------------------------------ outputs
   assign {vgaR, vgaG, vgaB} = rgb;
-  assign {An7, An6, An5, An4, An3, An2, An1, An0} = 8'hFF;   // display off until milestone 7
-  assign {Ca, Cb, Cc, Cd, Ce, Cf, Cg} = 7'h7F;
+  assign {An7, An6, An5, An4, An3, An2, An1, An0} = an;
+  assign {Ca, Cb, Cc, Cd, Ce, Cf, Cg} = seg;
   assign Dp = 1'b1;
 
   // Lives: Ld0 = lives >= 1, Ld1 = lives >= 2, Ld2 = lives == 3.
