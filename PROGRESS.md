@@ -35,7 +35,8 @@ port list, so each was resolved with the reading closest to DESIGN.md.
 6. **Testbench list.** Section 11 lists six testbenches; CLAUDE.md asks for one
    per module. Both are provided: the six from section 12, plus
    `tb_debouncer`, `tb_input_latch`, `tb_level_rom`, `tb_lane_engine`,
-   `tb_renderer`, `tb_text_overlay`, `tb_ssd_driver`.
+   `tb_renderer`, `tb_text_overlay`, `tb_ssd_driver`, and one extra
+   integration test, `tb_playthrough` (milestone 8).
 7. **Debouncer length in simulation.** The 21-bit counter (21 ms) is a
    module parameter, `CNT_W`, defaulting to `DEBOUNCE_BITS` = 21 from
    `crossy_defs.vh`, so testbenches can shorten it. Not a port change. The
@@ -55,6 +56,15 @@ port list, so each was resolved with the reading closest to DESIGN.md.
     be built, so milestone 1's `crossy_top` draws a static copy of the skeleton
     picture (red screen, white band at vCount 400–475) itself. It was replaced
     by the renderer in milestone 2.
+13. **`frame_tick` samples another clock's counter.** `vCount` is clocked by
+    the skeleton's internally divided 25 MHz clock, and `crossy_top` compares
+    it (`>= 516`) in the 100 MHz domain as DESIGN 6 specifies. Vivado does not
+    time that path. If the compare output were ever sampled while vCount is
+    changing inside blanking (e.g. 519 -> 520), a one-cycle low reading could
+    make a second `frame_tick` in that frame (one frame of double motion).
+    Because clk25 is derived from ClkPort, the sampling phase is fixed, so this
+    either never happens or happens at the same place every frame. Left as
+    specified; flagged as a board check (motion should be perfectly even).
 12. **The tick that ends PLAY.** `play_tick` is "`frame_tick` while in PLAY", so
     on the frame tick on which the FSM enters DEATH or LEVEL_CLEAR the lanes
     still advance one step and a pending hop still executes. This follows the
@@ -369,3 +379,40 @@ Level 5 playability is a milestone 10 board item.
       restarted and the chicken on the start tile; clearing level 5 shows
       the dark green WIN screen.
 - [ ] Level timers: 60, 60, 50, 45, 40 s.
+
+## Milestone 9: Text screens
+
+**Built**
+- `src/text_overlay.v`: DESIGN 4 text. Message ROM (state, line, cell) ->
+  glyph number; glyph ROM -> 8x8 bitmap holding a 5x7 font in columns 1–5,
+  rows 0–6, drawn at 8x (64x64 px cells, letters 40x56 px with 24 px gaps).
+  Lines at y 128–191 and 256–319. Words are centered: an n-letter word starts
+  at cell (10 - n + 1) / 2. Messages: TITLE `CROSSY` / `ROAD`; PAUSE `PAUSED`
+  (first line only); LEVEL_CLEAR `LEVEL` / `CLEAR`; GAME_OVER `GAME` / `OVER`;
+  WIN `YOU` / `WIN`; PLAY and DEATH none. The 17 glyphs are exactly the set
+  DESIGN 4 lists.
+- `crossy_top`: `text_on` now comes from `text_overlay`. This is the complete
+  base game.
+- `ssd_driver`: segment table given a top-of-block default (CLAUDE.md style;
+  no behavior change).
+
+**Tests passing (all 14):** `tb_collision`, `tb_debouncer`, `tb_game_fsm`,
+`tb_input_latch`, `tb_lane_engine`, `tb_lane_lookup`, `tb_level_rom`,
+`tb_player_ctrl`, `tb_playthrough`, `tb_renderer`, `tb_score_timer`,
+`tb_ssd_driver`, `tb_text_overlay` (all 307,200 pixels in each of the eight
+state codes against an independent string + font model; off-screen x and y
+never draw), `tb_top` (two real frames; now also probes the C of CROSSY on
+the title). No compiler warnings with `-Wall`.
+
+**Unverified:** everything on the VM and the board.
+
+**Board checks** (bring-up step 8)
+- [ ] Title: black screen, `CROSSY` above `ROAD` in large white block
+      letters, both centered.
+- [ ] BtnC during play: `PAUSED` over the frozen playfield; BtnC again
+      removes it and play resumes exactly.
+- [ ] Reaching the top: `LEVEL` / `CLEAR` over the frozen playfield for
+      about 2 s.
+- [ ] Third death: `GAME` / `OVER` on dark red.
+- [ ] Clearing level 5: `YOU` / `WIN` on dark green.
+- [ ] Letters are not cut off, mirrored or upside down, and do not shimmer.

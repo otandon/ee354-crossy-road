@@ -3,8 +3,8 @@
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
 // Pins, reset, frame_tick, and the wiring between the input, game-logic and
 // output modules (DESIGN 3 and 6).
-// Milestone 7: full game loop with lives, score, level timer, the
-// seven-segment display and the LEDs.
+// Milestone 9: the complete base game -- five levels, lives, score, timer,
+// seven-segment display, LEDs and text screens.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -113,10 +113,13 @@ module crossy_top(
   // ------------------------------------------------------------ picture
   wire [9:0]  x, y;
   wire [11:0] rgb;
+  wire        text_on;
+
+  text_overlay text(.x(x), .y(y), .state(state), .text_on(text_on));
 
   renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(state),
                 .lane_r(lane_r), .off_r(off_r), .player_x(player_x),
-                .player_row(player_row), .text_on(1'b0),
+                .player_row(player_row), .text_on(text_on),
                 .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
   // ------------------------------------------------------------ seven-segment display

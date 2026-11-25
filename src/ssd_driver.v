@@ -46,6 +46,7 @@ module ssd_driver(
 
   // Digit-to-segment table from counter.v, plus L and blank.
   always @(*) begin
+    seg = 7'b1111111;
     case (digit)
       4'd0:    seg = 7'b0000001;
       4'd1:    seg = 7'b1001111;

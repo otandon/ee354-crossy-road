@@ -8,7 +8,8 @@
 //   * frame_tick is high for exactly one clock per frame, in vertical blanking,
 //   * a few probe pixels show the expected colors (the wiring from level_rom
 //     through the renderer to the VGA pins),
-//   * BtnC starts the game: frame 1 is the title screen, frame 2 is level 1,
+//   * BtnC starts the game: frame 1 is the title screen (black, with the
+//     CROSSY text), frame 2 is level 1,
 //   * during play the seven-segment display reads "L1 60 0000" (level 1,
 //     60 s, score 0), each of the eight digits seen at least once.
 // BtnC's debouncer is shortened with defparam so a press fits in a frame;
@@ -57,7 +58,7 @@ module tb_top;
   // ------------------------------------------------------------ probe pixels
   // Each probe is checked every time the beam is on it while the game is in
   // the probe's state.
-  localparam integer NPROBE = 12;
+  localparam integer NPROBE = 14;
   integer probe_x   [0:NPROBE-1];
   integer probe_y   [0:NPROBE-1];
   reg [11:0] probe_c [0:NPROBE-1];
@@ -80,6 +81,10 @@ module tb_top;
     probe_x[9]  = 5;   probe_y[9]  = 0*32 + 16;  probe_c[9]  = COL_BLACK; probe_s[9]  = S_TITLE;
     probe_x[10] = 336; probe_y[10] = 14*32 + 16; probe_c[10] = COL_BLACK; probe_s[10] = S_TITLE;
     probe_x[11] = 5;   probe_y[11] = 10*32 + 16; probe_c[11] = COL_BLACK; probe_s[11] = S_TITLE;
+    // Title text: the 'C' of CROSSY in cell 2; glyph row 0 is .###. so
+    // column 2 is lit and column 1 is not.
+    probe_x[12] = 2*64 + 2*8 + 4; probe_y[12] = 128 + 4; probe_c[12] = COL_TEXT;  probe_s[12] = S_TITLE;
+    probe_x[13] = 2*64 + 1*8 + 4; probe_y[13] = 128 + 4; probe_c[13] = COL_BLACK; probe_s[13] = S_TITLE;
     for (pi = 0; pi < NPROBE; pi = pi + 1) probe_hits[pi] = 0;
   end
 
