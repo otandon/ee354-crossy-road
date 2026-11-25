@@ -90,3 +90,41 @@ milestone only.
       the bottom, like the skeleton demo, with no flicker.
 - [ ] LD15 blinks: on about 1 s, off about 1 s (frame_tick is running at 60 Hz).
 - [ ] Pressing CPU_RESET restarts the blink phase and the picture stays.
+
+## Milestone 2: Static background
+
+**Built**
+- `src/level_rom.v`: combinational (level, row) -> descriptor. Level 1 only
+  so far: goal row 0, river row 5 (`LOG_A`, right, 1 px/frame), roads rows 10
+  (`CAR_A`) and 12 (`CAR_B`), both left, 1 px/frame. Everything else is grass.
+  Speeds are named localparams at the top of the file.
+- `src/renderer.v`: DESIGN 8.4 as written. Screen coordinates from the
+  counters (x = hCount - 145, y = vCount - 35), black outside the 640x480
+  window including the 481st line, draw priority text > state backgrounds >
+  chicken > car/log > lane.
+- `crossy_top`: renderer + one level_rom for the row being drawn, level 1,
+  offset 0, state forced to PLAY, chicken parked on the never-drawn row 15.
+  Cars and logs therefore appear, standing still at their offset-0 positions.
+  LD15 heartbeat kept.
+
+**Tests passing:** `tb_lane_lookup`, `tb_level_rom` (level 1 against the
+DESIGN 5 table: kinds, odd-right/even-left directions, speeds, non-empty
+moving lanes, empty grass/goal rows, unused levels 0/6/7 are grass),
+`tb_renderer` (every lane color, the 4..27 band edges, car edges with and
+without offset, chicken box edges, red chicken in DEATH, chicken at x = 608,
+each state's background, text priority, blanking and the 481st line),
+`tb_top` (now also probes 8 pixels of the level 1 picture on the real VGA
+timing).
+
+**Unverified:** synthesis, timing, the picture on a monitor.
+
+**Board checks** (bring-up step 2)
+- [ ] 15 horizontal bands, each 32 px tall, top to bottom: yellow goal, four
+      grass, blue river (row 5), four grass, gray road (row 10), grass, gray
+      road (row 12), two grass.
+- [ ] Brown logs on the river: two 6-tile logs starting at the left edge.
+      Red cars: two 2-tile cars on row 10, two 3-tile trucks on row 12, all
+      starting at the left edge. Cars and logs are thinner than their lane
+      (4 px of lane color above and below).
+- [ ] Picture fills the screen edge to edge, nothing wraps or is cut off, no
+      flicker. LD15 still blinks once a second.

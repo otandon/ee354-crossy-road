@@ -5,7 +5,9 @@
 //   * hSync and vSync toggle,
 //   * RGB is zero whenever bright is low,
 //   * no output is X or Z,
-//   * frame_tick is high for exactly one clock per frame, in vertical blanking.
+//   * frame_tick is high for exactly one clock per frame, in vertical blanking,
+//   * a few probe pixels show the expected colors (the wiring from level_rom
+//     through the renderer to the VGA pins).
 module tb_top;
 `include "crossy_defs.vh"
 
@@ -45,6 +47,27 @@ module tb_top;
                       Ld2, Ld1, Ld0, LD15, LD14, LD13, LD12, LD11, LD10, LD9,
                       QuadSpiFlashCS, 22'd0};
 
+  // ------------------------------------------------------------ probe pixels
+  // Each probe is checked every time the beam is on it after reset.
+  localparam integer NPROBE = 8;
+  integer probe_x   [0:NPROBE-1];
+  integer probe_y   [0:NPROBE-1];
+  reg [11:0] probe_c [0:NPROBE-1];
+  integer probe_hits[0:NPROBE-1];
+  integer pi;
+  initial begin
+    // Level 1 at offset 0, state PLAY (milestone 2: static playfield).
+    probe_x[0] = 5;   probe_y[0] = 0*32 + 16;  probe_c[0] = COL_GOAL;   // goal row
+    probe_x[1] = 5;   probe_y[1] = 5*32 + 16;  probe_c[1] = COL_LOG;    // LOG_A tile 0
+    probe_x[2] = 200; probe_y[2] = 5*32 + 16;  probe_c[2] = COL_WATER;  // LOG_A tile 6
+    probe_x[3] = 5;   probe_y[3] = 10*32 + 16; probe_c[3] = COL_CAR;    // CAR_A tile 0
+    probe_x[4] = 170; probe_y[4] = 10*32 + 16; probe_c[4] = COL_ROAD;   // CAR_A tile 5
+    probe_x[5] = 5;   probe_y[5] = 10*32 + 2;  probe_c[5] = COL_ROAD;   // above the car band
+    probe_x[6] = 5;   probe_y[6] = 14*32 + 16; probe_c[6] = COL_GRASS;  // start row
+    probe_x[7] = 639; probe_y[7] = 479;        probe_c[7] = COL_GRASS;  // last visible pixel
+    for (pi = 0; pi < NPROBE; pi = pi + 1) probe_hits[pi] = 0;
+  end
+
   integer errors = 0;
   integer xz_errors = 0, rgb_errors = 0;
   integer h_toggles = 0, v_toggles = 0;
@@ -63,6 +86,18 @@ module tb_top;
         rgb_errors = rgb_errors + 1;
         if (rgb_errors < 10)
           $display("FAIL rgb=%h while bright=0 at hc=%0d vc=%0d", rgb, dut.hc, dut.vc);
+      end
+      if (dut.bright) begin
+        for (pi = 0; pi < NPROBE; pi = pi + 1) begin
+          if (dut.hc == probe_x[pi] + 145 && dut.vc == probe_y[pi] + 35) begin
+            probe_hits[pi] = probe_hits[pi] + 1;
+            if (rgb !== probe_c[pi]) begin
+              errors = errors + 1;
+              $display("FAIL probe %0d at x=%0d y=%0d: rgb=%h expected %h",
+                       pi, probe_x[pi], probe_y[pi], rgb, probe_c[pi]);
+            end
+          end
+        end
       end
       if (hSync !== last_h) h_toggles = h_toggles + 1;
       if (vSync !== last_v) v_toggles = v_toggles + 1;
@@ -103,6 +138,11 @@ module tb_top;
       errors = errors + 1;
       $display("FAIL saw %0d frame_ticks in two frames, expected 2", ticks);
     end
+    for (pi = 0; pi < NPROBE; pi = pi + 1)
+      if (probe_hits[pi] == 0) begin
+        errors = errors + 1;
+        $display("FAIL probe %0d was never reached", pi);
+      end
     errors = errors + xz_errors + rgb_errors;
     $display("hSync toggles %0d, vSync toggles %0d, frame_ticks %0d", h_toggles, v_toggles, ticks);
     if (errors == 0) $display("PASS tb_top");

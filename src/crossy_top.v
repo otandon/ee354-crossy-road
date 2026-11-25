@@ -1,9 +1,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
-// Milestone 1: reset synchronizer, frame_tick, and a static test picture
-// (the skeleton's red screen with a white band) so the display path can be
-// checked before any game logic exists.
+// Milestone 2: reset synchronizer, frame_tick, and the static level 1
+// playfield drawn by renderer + level_rom.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -45,15 +44,21 @@ module crossy_top(
   end
   wire frame_tick = vb1 & ~vb2;
 
-  // ------------------------------------------------------------ test picture
-  // Temporary (milestone 1 only): red background, white band at vCount
-  // 400..475, black whenever bright is low.
-  reg [11:0] rgb;
-  always @(*) begin
-    rgb = 12'h000;
-    if (bright)
-      rgb = ((vc >= 10'd400) && (vc <= 10'd475)) ? 12'hFFF : 12'hF00;
-  end
+  // ------------------------------------------------------------ picture
+  // Milestone 2: static level 1 playfield. One level_rom answers for the row
+  // being drawn; offsets are 0 and there is no chicken yet (row 15 is never
+  // drawn).
+  wire [3:0]  row_r;
+  wire [9:0]  x, y;
+  wire [25:0] lane_r;
+  wire [11:0] rgb;
+
+  level_rom rom_r(.level(FIRST_LEVEL), .row(row_r), .lane(lane_r));
+
+  renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(S_PLAY),
+                .lane_r(lane_r), .off_r(10'd0), .player_x(START_X),
+                .player_row(4'd15), .text_on(1'b0),
+                .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
   // Heartbeat on LD15: toggles every 60 frame ticks (about once a second),
   // which shows on the board that frame_tick runs at 60 Hz.
