@@ -49,7 +49,7 @@ module tb_top;
 
   // ------------------------------------------------------------ probe pixels
   // Each probe is checked every time the beam is on it after reset.
-  localparam integer NPROBE = 8;
+  localparam integer NPROBE = 9;
   integer probe_x   [0:NPROBE-1];
   integer probe_y   [0:NPROBE-1];
   reg [11:0] probe_c [0:NPROBE-1];
@@ -65,6 +65,7 @@ module tb_top;
     probe_x[5] = 5;   probe_y[5] = 10*32 + 2;  probe_c[5] = COL_ROAD;   // above the car band
     probe_x[6] = 5;   probe_y[6] = 14*32 + 16; probe_c[6] = COL_GRASS;  // start row
     probe_x[7] = 639; probe_y[7] = 479;        probe_c[7] = COL_GRASS;  // last visible pixel
+    probe_x[8] = 336; probe_y[8] = 14*32 + 16; probe_c[8] = COL_CHICKEN; // chicken on its start tile
     for (pi = 0; pi < NPROBE; pi = pi + 1) probe_hits[pi] = 0;
   end
 

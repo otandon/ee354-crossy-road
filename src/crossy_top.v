@@ -1,8 +1,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
-// Milestone 2: reset synchronizer, frame_tick, and the static level 1
-// playfield drawn by renderer + level_rom.
+// Milestone 3: static level 1 playfield, plus buttons (debouncer x5,
+// input_latch) and a chicken that hops (player_ctrl) on every frame tick.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -44,10 +44,38 @@ module crossy_top(
   end
   wire frame_tick = vb1 & ~vb2;
 
+  // ------------------------------------------------------------ buttons
+  wire pulse_u, pulse_d, pulse_l, pulse_r, pulse_c;
+  debouncer #(.CNT_W(DEBOUNCE_BITS)) db_u(.clk(ClkPort), .reset(reset), .btn(BtnU), .pulse(pulse_u));
+  debouncer #(.CNT_W(DEBOUNCE_BITS)) db_d(.clk(ClkPort), .reset(reset), .btn(BtnD), .pulse(pulse_d));
+  debouncer #(.CNT_W(DEBOUNCE_BITS)) db_l(.clk(ClkPort), .reset(reset), .btn(BtnL), .pulse(pulse_l));
+  debouncer #(.CNT_W(DEBOUNCE_BITS)) db_r(.clk(ClkPort), .reset(reset), .btn(BtnR), .pulse(pulse_r));
+  debouncer #(.CNT_W(DEBOUNCE_BITS)) db_c(.clk(ClkPort), .reset(reset), .btn(BtnC), .pulse(pulse_c));
+
+  wire req_u, req_d, req_l, req_r, req_c;
+  input_latch latch(.clk(ClkPort), .reset(reset),
+                    .pulse_u(pulse_u), .pulse_d(pulse_d), .pulse_l(pulse_l),
+                    .pulse_r(pulse_r), .pulse_c(pulse_c), .frame_tick(frame_tick),
+                    .req_u(req_u), .req_d(req_d), .req_l(req_l), .req_r(req_r),
+                    .req_c(req_c));
+
+  // ------------------------------------------------------------ game logic
+  // Milestone 3: no state machine yet, so every frame tick is a play tick.
+  wire        play_tick = frame_tick;
+  wire [9:0]  player_x;
+  wire [3:0]  player_row;
+  wire        at_goal, new_row, carried_off;
+
+  player_ctrl player(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
+                     .respawn(1'b0), .level_load(1'b0),
+                     .req_u(req_u), .req_d(req_d), .req_l(req_l), .req_r(req_r),
+                     .lane_p(LANE_GRASS),
+                     .player_x(player_x), .player_row(player_row),
+                     .at_goal(at_goal), .new_row(new_row), .carried_off(carried_off));
+
   // ------------------------------------------------------------ picture
-  // Milestone 2: static level 1 playfield. One level_rom answers for the row
-  // being drawn; offsets are 0 and there is no chicken yet (row 15 is never
-  // drawn).
+  // Static level 1 playfield: one level_rom answers for the row being drawn,
+  // offsets are 0.
   wire [3:0]  row_r;
   wire [9:0]  x, y;
   wire [25:0] lane_r;
@@ -56,8 +84,8 @@ module crossy_top(
   level_rom rom_r(.level(FIRST_LEVEL), .row(row_r), .lane(lane_r));
 
   renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(S_PLAY),
-                .lane_r(lane_r), .off_r(10'd0), .player_x(START_X),
-                .player_row(4'd15), .text_on(1'b0),
+                .lane_r(lane_r), .off_r(10'd0), .player_x(player_x),
+                .player_row(player_row), .text_on(1'b0),
                 .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
   // Heartbeat on LD15: toggles every 60 frame ticks (about once a second),

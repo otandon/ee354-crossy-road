@@ -128,3 +128,37 @@ timing).
       (4 px of lane color above and below).
 - [ ] Picture fills the screen edge to edge, nothing wraps or is cut off, no
       flicker. LD15 still blinks once a second.
+
+## Milestone 3: Hopping
+
+**Built**
+- `src/debouncer.v`: DESIGN 6 sketch. Two-flop synchronizer, 2^21-cycle
+  (21 ms) settle counter, one-cycle pulse on press only. Width is the
+  parameter `CNT_W`; `crossy_top` passes `DEBOUNCE_BITS` from the defs file.
+- `src/input_latch.v`: pulse sets, `frame_tick` clears, set wins on a tie.
+- `src/player_ctrl.v`: hops in priority order up > down > left > right, one
+  per `play_tick`, edges ignored; `best_row` / `new_row` / `at_goal`. Log
+  carry is not in yet (`carried_off` is tied to 0 until milestone 5).
+- `crossy_top`: five debouncers, the latch, and `player_ctrl` with
+  `play_tick = frame_tick` (no state machine yet). The chicken is drawn.
+
+**Tests passing:** all of the above plus `tb_debouncer` (clean press held
+20x the settle time gives one pulse; release, short glitches, one-cycle
+spikes and dropouts give none; bouncy press gives one; ten presses give ten;
+latency is the settle time + sync), `tb_input_latch` (each bit set/held/
+visible on the tick cycle/cleared; set wins on the tick cycle; reset),
+`tb_player_ctrl` (one tile per hop, all four edges ignored, hop priority,
+new_row exactly once per row per level, none for back-and-forth, none after
+respawn, all 14 again after level_load), `tb_top` (adds a chicken pixel
+probe).
+
+**Unverified:** button feel, synthesis, timing.
+
+**Board checks** (bring-up step 3)
+- [ ] A 24x24 white square sits on the bottom row, horizontally centered
+      (left edge of its tile at x = 320).
+- [ ] Each tap of BtnU/BtnD/BtnL/BtnR moves it exactly one tile. Tap each
+      direction 20 times: exactly 20 hops, none missed, none doubled.
+- [ ] Holding a button gives one hop, not repeats.
+- [ ] Hopping into each of the four screen edges does nothing.
+- [ ] The chicken can walk over the static cars and river (no collisions yet).
