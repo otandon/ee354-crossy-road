@@ -1,0 +1,113 @@
+`timescale 1ns / 1ps
+`default_nettype none
+// tb_top -- runs crossy_top with the real display_controller for two frames.
+// Checks, from the end of reset onward:
+//   * hSync and vSync toggle,
+//   * RGB is zero whenever bright is low,
+//   * no output is X or Z,
+//   * frame_tick is high for exactly one clock per frame, in vertical blanking.
+module tb_top;
+`include "crossy_defs.vh"
+
+  localparam integer CYCLES_PER_FRAME = 800 * 525 * 4;   // 25 MHz pixel clock
+  localparam integer RESET_CYCLES     = 100;
+
+  reg ClkPort = 1'b0;
+  always #5 ClkPort = ~ClkPort;                         // 100 MHz
+
+  reg CPU_RESETN = 1'b0;
+  reg BtnC = 1'b0, BtnU = 1'b0, BtnD = 1'b0, BtnL = 1'b0, BtnR = 1'b0;
+  reg Sw0 = 1'b0, Sw1 = 1'b0, Sw2 = 1'b0;
+
+  wire hSync, vSync;
+  wire [3:0] vgaR, vgaG, vgaB;
+  wire An0, An1, An2, An3, An4, An5, An6, An7;
+  wire Ca, Cb, Cc, Cd, Ce, Cf, Cg, Dp;
+  wire Ld0, Ld1, Ld2;
+  wire LD9, LD10, LD11, LD12, LD13, LD14, LD15;
+  wire QuadSpiFlashCS;
+
+  crossy_top dut(
+    .ClkPort(ClkPort), .CPU_RESETN(CPU_RESETN),
+    .BtnC(BtnC), .BtnU(BtnU), .BtnD(BtnD), .BtnL(BtnL), .BtnR(BtnR),
+    .Sw0(Sw0), .Sw1(Sw1), .Sw2(Sw2),
+    .hSync(hSync), .vSync(vSync), .vgaR(vgaR), .vgaG(vgaG), .vgaB(vgaB),
+    .An0(An0), .An1(An1), .An2(An2), .An3(An3), .An4(An4), .An5(An5), .An6(An6), .An7(An7),
+    .Ca(Ca), .Cb(Cb), .Cc(Cc), .Cd(Cd), .Ce(Ce), .Cf(Cf), .Cg(Cg), .Dp(Dp),
+    .Ld0(Ld0), .Ld1(Ld1), .Ld2(Ld2),
+    .LD9(LD9), .LD10(LD10), .LD11(LD11), .LD12(LD12), .LD13(LD13), .LD14(LD14), .LD15(LD15),
+    .QuadSpiFlashCS(QuadSpiFlashCS));
+
+  wire [11:0] rgb = {vgaR, vgaG, vgaB};
+  wire [53:0] outs = {hSync, vSync, vgaR, vgaG, vgaB,
+                      An7, An6, An5, An4, An3, An2, An1, An0,
+                      Ca, Cb, Cc, Cd, Ce, Cf, Cg, Dp,
+                      Ld2, Ld1, Ld0, LD15, LD14, LD13, LD12, LD11, LD10, LD9,
+                      QuadSpiFlashCS, 22'd0};
+
+  integer errors = 0;
+  integer xz_errors = 0, rgb_errors = 0;
+  integer h_toggles = 0, v_toggles = 0;
+  integer ticks = 0;
+  reg     checking = 1'b0;
+  reg     last_h, last_v, last_tick;
+
+  // All checks sample on the falling edge, half a cycle after any change.
+  always @(negedge ClkPort) begin
+    if (checking) begin
+      if (^outs === 1'bx) begin
+        xz_errors = xz_errors + 1;
+        if (xz_errors < 10) $display("FAIL X/Z on an output at %0t: %b", $time, outs);
+      end
+      if (!dut.bright && rgb !== 12'h000) begin
+        rgb_errors = rgb_errors + 1;
+        if (rgb_errors < 10)
+          $display("FAIL rgb=%h while bright=0 at hc=%0d vc=%0d", rgb, dut.hc, dut.vc);
+      end
+      if (hSync !== last_h) h_toggles = h_toggles + 1;
+      if (vSync !== last_v) v_toggles = v_toggles + 1;
+      if (dut.frame_tick === 1'b1) begin
+        ticks = ticks + 1;
+        if (last_tick === 1'b1) begin
+          errors = errors + 1;
+          $display("FAIL frame_tick high for more than one cycle at %0t", $time);
+        end
+        if (dut.vc < VBLANK_START) begin
+          errors = errors + 1;
+          $display("FAIL frame_tick outside vertical blanking, vc=%0d", dut.vc);
+        end
+      end
+    end
+    last_h    = hSync;
+    last_v    = vSync;
+    last_tick = dut.frame_tick;
+  end
+
+  initial begin
+    repeat (RESET_CYCLES) @(posedge ClkPort);
+    CPU_RESETN = 1'b1;
+    repeat (4) @(posedge ClkPort);
+    checking = 1'b1;
+    repeat (2 * CYCLES_PER_FRAME) @(posedge ClkPort);
+    checking = 1'b0;
+
+    if (h_toggles < 2 * 2 * 525 - 4) begin
+      errors = errors + 1;
+      $display("FAIL hSync toggled only %0d times in two frames", h_toggles);
+    end
+    if (v_toggles < 3) begin
+      errors = errors + 1;
+      $display("FAIL vSync toggled only %0d times in two frames", v_toggles);
+    end
+    if (ticks != 2) begin
+      errors = errors + 1;
+      $display("FAIL saw %0d frame_ticks in two frames, expected 2", ticks);
+    end
+    errors = errors + xz_errors + rgb_errors;
+    $display("hSync toggles %0d, vSync toggles %0d, frame_ticks %0d", h_toggles, v_toggles, ticks);
+    if (errors == 0) $display("PASS tb_top");
+    else             $display("FAIL tb_top");
+    $finish;
+  end
+endmodule
+`default_nettype wire
