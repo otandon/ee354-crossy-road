@@ -1,0 +1,23 @@
+# generated output
+build/
+*.vvp
+*.vcd
+*.fst
+
+# Vivado
+*.jou
+*.log
+*.str
+*.xpr
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/
+.Xil/
+xsim.dir/
+usage_statistics_webtalk.*
+
+# macOS
+.DS_Store
