@@ -174,6 +174,100 @@ module tb_player_ctrl;
       errors = errors + 1; $display("FAIL %0d new_row after level_load, expected 14", new_rows);
     end
 
+    // ================================================================
+    // Log carry, carried_off and snap (milestone 5). lane_p is driven
+    // directly here, standing for whatever lane the chicken is on.
+    // ================================================================
+    pulse_respawn;
+    expect_pos(10'd320, 4'd14, "respawn before carry tests");
+
+    // ---- carry right and left, at the lane's speed
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd1, LOG_A};
+    tick(4'b0000); expect_pos(10'd321, 4'd14, "carried right 1 px");
+    repeat (3) tick(4'b0000);
+    expect_pos(10'd324, 4'd14, "carried right 4 px over 4 ticks");
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd3, LOG_A};
+    tick(4'b0000); expect_pos(10'd327, 4'd14, "carried right 3 px at speed 3");
+    lane_p = {K_RIVER, DIR_LEFT, 3'd2, LOG_A};
+    tick(4'b0000); expect_pos(10'd325, 4'd14, "carried left 2 px at speed 2");
+
+    // ---- carried to the left edge at speed 1
+    lane_p = {K_RIVER, DIR_LEFT, 3'd1, LOG_A};
+    repeat (324) tick(4'b0000);
+    expect_pos(10'd1, 4'd14, "carried left to x=1");
+    expect_bit(carried_off, 1'b0, "carried_off at x=1, speed 1 left");
+    tick(4'b0000);
+    expect_pos(10'd0, 4'd14, "carried left to x=0");
+    expect_bit(carried_off, 1'b1, "carried_off at x=0 moving left");
+    tick(4'b0000);
+    expect_pos(10'd0, 4'd14, "not carried past the left edge");
+    // a hop into the edge is ignored and the chicken still is not moved
+    tick(4'b0010);
+    expect_pos(10'd0, 4'd14, "hop left at x=0 on a log");
+
+    // ---- speed 3 left at x=2 is carried off
+    tick(4'b0001); expect_pos(10'd32, 4'd14, "hop right off the edge");
+    lane_p = {K_RIVER, DIR_LEFT, 3'd3, LOG_A};
+    repeat (10) tick(4'b0000);
+    expect_pos(10'd2, 4'd14, "carried left to x=2 at speed 3");
+    expect_bit(carried_off, 1'b1, "carried_off at x=2, speed 3 left");
+    tick(4'b0000); expect_pos(10'd2, 4'd14, "held at x=2");
+
+    // ---- carried to the right edge at speed 1
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd1, LOG_A};
+    repeat (605) tick(4'b0000);
+    expect_pos(10'd607, 4'd14, "carried right to x=607");
+    expect_bit(carried_off, 1'b0, "carried_off at x=607, speed 1 right");
+    tick(4'b0000);
+    expect_pos(10'd608, 4'd14, "carried right to x=608");
+    expect_bit(carried_off, 1'b1, "carried_off at x=608 moving right");
+    tick(4'b0000); expect_pos(10'd608, 4'd14, "not carried past the right edge");
+
+    // ---- speed 4 right: 604 is safe (lands on 608), 608 is carried off
+    tick(4'b0010); expect_pos(10'd576, 4'd14, "hop left from 608");
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd4, LOG_A};
+    repeat (7) tick(4'b0000);
+    expect_pos(10'd604, 4'd14, "carried right to 604 at speed 4");
+    expect_bit(carried_off, 1'b0, "carried_off at 604, speed 4 right");
+    tick(4'b0000); expect_pos(10'd608, 4'd14, "carried right to 608 at speed 4");
+    expect_bit(carried_off, 1'b1, "carried_off at 608, speed 4 right");
+
+    // ---- an ignored hop falls through to the ride
+    lane_p = {K_RIVER, DIR_LEFT, 3'd1, LOG_A};
+    tick(4'b0001); expect_pos(10'd607, 4'd14, "hop right at 608 ignored, log carries left");
+    // a hop has priority over the ride
+    tick(4'b0010); expect_pos(10'd575, 4'd14, "hop left instead of riding");
+    tick(4'b1000); expect_pos(10'd575, 4'd13, "hop up keeps x");
+
+    // ---- carried_off only exists on rivers
+    lane_p = {K_ROAD, DIR_LEFT, 3'd4, CAR_A};
+    expect_bit(carried_off, 1'b0, "no carried_off on a road");
+
+    // ---- snap to the nearest tile on non-river lanes
+    lane_p = LANE_GRASS;
+    tick(4'b0000); expect_pos(10'd576, 4'd13, "snap 575 -> 576");
+    tick(4'b0000); expect_pos(10'd576, 4'd13, "aligned x stays put");
+    repeat (17) tick(4'b0010);
+    expect_pos(10'd32, 4'd13, "walk to x=32");
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd1, LOG_A};
+    repeat (15) tick(4'b0000);
+    expect_pos(10'd47, 4'd13, "carried to x=47");
+    lane_p = {K_ROAD, DIR_LEFT, 3'd1, CAR_A};
+    tick(4'b0000); expect_pos(10'd32, 4'd13, "snap 47 -> 32 on a road");
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd1, LOG_A};
+    repeat (16) tick(4'b0000);
+    expect_pos(10'd48, 4'd13, "carried to x=48");
+    lane_p = LANE_GRASS;
+    tick(4'b0000); expect_pos(10'd64, 4'd13, "snap 48 -> 64 on grass");
+    // snap waits for play_tick
+    lane_p = {K_RIVER, DIR_RIGHT, 3'd1, LOG_A};
+    repeat (5) tick(4'b0000);
+    lane_p = LANE_GRASS;
+    repeat (10) @(posedge clk); #1;
+    expect_pos(10'd69, 4'd13, "no snap without play_tick");
+    lane_p = LANE_GOAL;
+    tick(4'b0000); expect_pos(10'd64, 4'd13, "snap 69 -> 64 on the goal row");
+
     // ---- reset from anywhere
     reset = 1'b1; @(posedge clk); #1; reset = 1'b0;
     expect_pos(START_X, START_ROW, "reset");

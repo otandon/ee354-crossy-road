@@ -195,3 +195,41 @@ milestone 8.
       vertical blanking).
 - [ ] The chicken still hops; it passes through cars and stands on water
       (no collisions yet).
+
+## Milestone 5: Collision and log riding
+
+**Built**
+- `src/collision.v`: DESIGN 8.3. Three sample points (x+4, x+27, x+16) via
+  the shared `occupied`; car hit on either edge, water if the center is off a
+  log; both results registered once.
+- `src/player_ctrl.v`: now hop > ride the log > snap to the nearest tile, and
+  `carried_off` (river lane and the log would push x below 0 or above 608).
+  An ignored hop falls through to the ride/snap step.
+- `crossy_top`: collision instance; temporary debug LEDs LD14 = hit_car,
+  LD13 = in_water, LD12 = carried_off. LD15 heartbeat kept. Nothing kills the
+  chicken yet.
+
+**Tests passing:** all previous, plus `tb_collision` (car under only the left
+sample point, only the right, last/first pixel, narrowly missing on each side;
+offsets; a car split across the wrap point; chicken centered on each log end
+and one pixel off it; grass and goal never hit; registered one clock late;
+reset) and the new `tb_player_ctrl` cases (carry right/left at speeds 1–4;
+carried_off at x = 0 and 608 and not at 1/607; speed 3 at x = 2; speed 4 at
+604 vs 608; ignored hop falls through to ride; hop beats ride; snap 47 -> 32,
+48 -> 64, 575 -> 576, 69 -> 64; snap only on play_tick). A mutation check
+(`>` to `>=` in carried_off; right sample point moved to center) made both
+testbenches fail, so the cases have teeth.
+
+**Unverified:** that the LEDs agree with what the eye sees, synthesis, timing.
+
+**Board checks** (bring-up step 5)
+- [ ] Hop onto a road and let a car hit the chicken: LD14 lights while they
+      overlap and goes out when the car has passed. A car passing one tile
+      away does not light it.
+- [ ] Hop onto the river (row 5) where there is no log: LD13 lights. Hop onto
+      a log: LD13 stays off and the chicken drifts right with the log, staying
+      fixed relative to it.
+- [ ] Ride a log to the right edge: the chicken stops at the edge, LD12 lights,
+      and LD13 lights once the log has moved out from under it.
+- [ ] Hop from the log back onto grass between tiles: the chicken snaps to the
+      nearest tile (a jump of at most 16 px) one frame later.

@@ -1,9 +1,9 @@
 `timescale 1ns / 1ps
 `default_nettype none
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
-// Milestone 4: level 1 playfield with scrolling lanes (lane_engine), buttons
-// (debouncer x5, input_latch) and a hopping chicken (player_ctrl). No state
-// machine yet: every frame tick is a play tick.
+// Milestone 5: level 1 playfield with scrolling lanes, buttons, a chicken
+// that hops and rides logs, and collision shown on debug LEDs. No state
+// machine yet: every frame tick is a play tick and nothing kills the chicken.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -83,6 +83,10 @@ module crossy_top(
                      .player_x(player_x), .player_row(player_row),
                      .at_goal(at_goal), .new_row(new_row), .carried_off(carried_off));
 
+  wire hit_car, in_water;
+  collision coll(.clk(ClkPort), .reset(reset), .lane_p(lane_p), .off_p(off_p),
+                 .player_x(player_x), .hit_car(hit_car), .in_water(in_water));
+
   // ------------------------------------------------------------ picture
   wire [9:0]  x, y;
   wire [11:0] rgb;
@@ -116,7 +120,9 @@ module crossy_top(
   assign {Ca, Cb, Cc, Cd, Ce, Cf, Cg} = 7'h7F;
   assign Dp = 1'b1;
   assign {Ld2, Ld1, Ld0} = 3'b000;
-  assign {LD14, LD13, LD12, LD11, LD10, LD9} = 6'b000000;
+  // Milestone 5 debug: LD14 hit by car, LD13 in water, LD12 carried off.
+  assign {LD14, LD13, LD12} = {hit_car, in_water, carried_off};
+  assign {LD11, LD10, LD9}  = 3'b000;
   assign LD15 = beat;
   assign QuadSpiFlashCS = 1'b1;
 
