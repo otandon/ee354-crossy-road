@@ -233,3 +233,50 @@ testbenches fail, so the cases have teeth.
       and LD13 lights once the log has moved out from under it.
 - [ ] Hop from the log back onto grass between tiles: the chicken snaps to the
       nearest tile (a jump of at most 16 px) one frame later.
+
+## Milestone 6: State machine, lives, respawn
+
+**Built**
+- `src/game_fsm.v`: the seven states and every DESIGN 7 transition, written
+  as one-cycle event wires (start, goal, death, pause, resume, death_done,
+  clear_done, ...) so later blocks reuse the same decisions. PLAY priority is
+  goal > death > pause. `lives` decrements on entry to DEATH; DEATH holds 60
+  frame ticks and LEVEL_CLEAR 120 (`HOLD_DEATH`/`HOLD_CLEAR` in the defs
+  file), then the exit test runs on the next tick, so each lasts hold + 1
+  ticks. `respawn` and `level_load` are registered one-cycle pulses.
+  Start level = SW2..0 if 1–5, else 1. Unused state code 7 recovers to TITLE.
+  Score and timer outputs are held at 0 (milestone 7).
+- `crossy_top`: the full module graph from DESIGN 3. Switches go through two
+  flip-flops. LEDs now final: Ld0–Ld2 lives, LD15..LD9 one-hot state
+  (the milestone 1 heartbeat and milestone 5 debug LEDs are gone).
+
+**Tests passing:** all previous, plus `tb_game_fsm` (reset state; TITLE
+waits for BtnC on a tick; SW = 0/1/3/5/6/7; switch ignored after start;
+play_tick only in PLAY; pause/resume and nothing moves or dies while paused;
+death by car, water and carried-off; DEATH = 61 ticks and LEVEL_CLEAR = 121
+ticks; respawn without level_load after a death; BtnC ignored in DEATH and
+LEVEL_CLEAR; third death -> GAME_OVER -> TITLE; level clear -> next level
+with both pulses; goal + death + BtnC on one tick -> LEVEL_CLEAR; death +
+BtnC -> DEATH; level 5 clear -> WIN -> TITLE; SW = 5 start; reset from all
+seven states). Mutations (death-before-goal, hold off by one) are caught.
+`tb_top` now presses BtnC (debounce shortened by `defparam` in the testbench
+only) and checks the title screen in frame 1 and level 1 in frame 2.
+
+**Unverified:** the game loop on the board, synthesis, timing.
+
+**Board checks** (bring-up steps 5–6, first half)
+- [ ] After programming or CPU_RESET: black screen, LD15 lit, Ld0–Ld2 off.
+- [ ] BtnC: level 1 appears, LD14 lit, all three lives LEDs lit.
+- [ ] Hit a car: chicken turns red, LD12 lit, cars keep their position (all
+      motion frozen) for about 1 s, one lives LED goes out, then the chicken
+      reappears on the start tile and play resumes.
+- [ ] Same for stepping into water and for riding a log off either edge.
+- [ ] Third death: screen turns dark red, LD10 lit. BtnC returns to the black
+      title screen (LD15).
+- [ ] BtnC during play freezes everything (LD13); BtnC again resumes exactly
+      where it stopped.
+- [ ] Reach the top row: about 2 s frozen with LD11 lit, then level 2 loads
+      (still looks like level 1 until milestone 8, but lanes restart from
+      their initial positions). Clearing level 5 (SW = 5 at start) gives a
+      dark green screen with LD9 lit; BtnC returns to the title.
+- [ ] CPU_RESET returns to the title from each of the seven states.

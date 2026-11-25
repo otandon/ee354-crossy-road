@@ -1,9 +1,11 @@
 `timescale 1ns / 1ps
 `default_nettype none
 // crossy_top -- replaces skeleton/vga_top.v and keeps its port names.
-// Milestone 5: level 1 playfield with scrolling lanes, buttons, a chicken
-// that hops and rides logs, and collision shown on debug LEDs. No state
-// machine yet: every frame tick is a play tick and nothing kills the chicken.
+// Pins, reset, frame_tick, and the wiring between the input, game-logic and
+// output modules (DESIGN 3 and 6).
+// Milestone 6: full game loop (title, play, pause, death, level clear, game
+// over, win) with lives. Score, timer and the seven-segment display come in
+// milestone 7.
 module crossy_top(
   input  wire ClkPort,                       // 100 MHz
   input  wire CPU_RESETN,                    // active low
@@ -45,6 +47,19 @@ module crossy_top(
   end
   wire frame_tick = vb1 & ~vb2;
 
+  // ------------------------------------------------------------ switches
+  // Asynchronous; read only on TITLE -> PLAY. Two flip-flops first.
+  reg [2:0] sw_s0, sw_s1;
+  always @(posedge ClkPort) begin
+    if (reset) begin
+      sw_s0 <= 3'd0;
+      sw_s1 <= 3'd0;
+    end else begin
+      sw_s0 <= {Sw2, Sw1, Sw0};
+      sw_s1 <= sw_s0;
+    end
+  end
+
   // ------------------------------------------------------------ buttons
   wire pulse_u, pulse_d, pulse_l, pulse_r, pulse_c;
   debouncer #(.CNT_W(DEBOUNCE_BITS)) db_u(.clk(ClkPort), .reset(reset), .btn(BtnU), .pulse(pulse_u));
@@ -61,29 +76,38 @@ module crossy_top(
                     .req_c(req_c));
 
   // ------------------------------------------------------------ game logic
-  // Milestone 3: no state machine yet, so every frame tick is a play tick.
-  wire        play_tick = frame_tick;
+  wire [2:0]  state, level;
+  wire [1:0]  lives;
+  wire        play_tick, respawn, level_load;
+  wire [3:0]  score_th, score_h, score_t, timer_tens, timer_ones;
   wire [9:0]  player_x;
   wire [3:0]  player_row;
   wire        at_goal, new_row, carried_off;
-
+  wire        hit_car, in_water;
   wire [3:0]  row_r;
   wire [25:0] lane_r, lane_p;
   wire [9:0]  off_r, off_p;
 
-  lane_engine lanes(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
-                    .level_load(1'b0), .level(FIRST_LEVEL),
-                    .row_r(row_r), .row_p(player_row),
-                    .lane_r(lane_r), .lane_p(lane_p), .off_r(off_r), .off_p(off_p));
+  game_fsm fsm(.clk(ClkPort), .reset(reset), .frame_tick(frame_tick), .req_c(req_c),
+               .hit_car(hit_car), .in_water(in_water), .carried_off(carried_off),
+               .at_goal(at_goal), .new_row(new_row), .sw_level(sw_s1),
+               .state(state), .level(level), .lives(lives),
+               .play_tick(play_tick), .respawn(respawn), .level_load(level_load),
+               .score_th(score_th), .score_h(score_h), .score_t(score_t),
+               .timer_tens(timer_tens), .timer_ones(timer_ones));
 
   player_ctrl player(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
-                     .respawn(1'b0), .level_load(1'b0),
+                     .respawn(respawn), .level_load(level_load),
                      .req_u(req_u), .req_d(req_d), .req_l(req_l), .req_r(req_r),
                      .lane_p(lane_p),
                      .player_x(player_x), .player_row(player_row),
                      .at_goal(at_goal), .new_row(new_row), .carried_off(carried_off));
 
-  wire hit_car, in_water;
+  lane_engine lanes(.clk(ClkPort), .reset(reset), .play_tick(play_tick),
+                    .level_load(level_load), .level(level),
+                    .row_r(row_r), .row_p(player_row),
+                    .lane_r(lane_r), .lane_p(lane_p), .off_r(off_r), .off_p(off_p));
+
   collision coll(.clk(ClkPort), .reset(reset), .lane_p(lane_p), .off_p(off_p),
                  .player_x(player_x), .hit_car(hit_car), .in_water(in_water));
 
@@ -91,39 +115,31 @@ module crossy_top(
   wire [9:0]  x, y;
   wire [11:0] rgb;
 
-  renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(S_PLAY),
+  renderer rend(.bright(bright), .hCount(hc), .vCount(vc), .state(state),
                 .lane_r(lane_r), .off_r(off_r), .player_x(player_x),
                 .player_row(player_row), .text_on(1'b0),
                 .row_r(row_r), .x(x), .y(y), .rgb(rgb));
 
-  // Heartbeat on LD15: toggles every 60 frame ticks (about once a second),
-  // which shows on the board that frame_tick runs at 60 Hz.
-  reg [5:0] beat_cnt;
-  reg       beat;
-  always @(posedge ClkPort) begin
-    if (reset) begin
-      beat_cnt <= 6'd0;
-      beat     <= 1'b0;
-    end else if (frame_tick) begin
-      if (beat_cnt == FRAMES_PER_S - 6'd1) begin
-        beat_cnt <= 6'd0;
-        beat     <= ~beat;
-      end else begin
-        beat_cnt <= beat_cnt + 6'd1;
-      end
-    end
-  end
-
   // ------------------------------------------------------------ outputs
   assign {vgaR, vgaG, vgaB} = rgb;
-  assign {An7, An6, An5, An4, An3, An2, An1, An0} = 8'hFF;   // display off
+  assign {An7, An6, An5, An4, An3, An2, An1, An0} = 8'hFF;   // display off until milestone 7
   assign {Ca, Cb, Cc, Cd, Ce, Cf, Cg} = 7'h7F;
   assign Dp = 1'b1;
-  assign {Ld2, Ld1, Ld0} = 3'b000;
-  // Milestone 5 debug: LD14 hit by car, LD13 in water, LD12 carried off.
-  assign {LD14, LD13, LD12} = {hit_car, in_water, carried_off};
-  assign {LD11, LD10, LD9}  = 3'b000;
-  assign LD15 = beat;
+
+  // Lives: Ld0 = lives >= 1, Ld1 = lives >= 2, Ld2 = lives == 3.
+  assign Ld0 = (lives >= 2'd1);
+  assign Ld1 = (lives >= 2'd2);
+  assign Ld2 = (lives == 2'd3);
+
+  // Game state, one-hot, for debugging (DESIGN 7).
+  assign LD15 = (state == S_TITLE);
+  assign LD14 = (state == S_PLAY);
+  assign LD13 = (state == S_PAUSE);
+  assign LD12 = (state == S_DEATH);
+  assign LD11 = (state == S_LEVEL_CLEAR);
+  assign LD10 = (state == S_GAME_OVER);
+  assign LD9  = (state == S_WIN);
+
   assign QuadSpiFlashCS = 1'b1;
 
 endmodule

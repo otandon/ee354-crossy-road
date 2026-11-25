@@ -7,7 +7,10 @@
 //   * no output is X or Z,
 //   * frame_tick is high for exactly one clock per frame, in vertical blanking,
 //   * a few probe pixels show the expected colors (the wiring from level_rom
-//     through the renderer to the VGA pins).
+//     through the renderer to the VGA pins),
+//   * BtnC starts the game: frame 1 is the title screen, frame 2 is level 1.
+// BtnC's debouncer is shortened with defparam so a press fits in a frame;
+// the other four keep the real 21 ms settle time.
 module tb_top;
 `include "crossy_defs.vh"
 
@@ -40,6 +43,8 @@ module tb_top;
     .LD9(LD9), .LD10(LD10), .LD11(LD11), .LD12(LD12), .LD13(LD13), .LD14(LD14), .LD15(LD15),
     .QuadSpiFlashCS(QuadSpiFlashCS));
 
+  defparam dut.db_c.CNT_W = 4;
+
   wire [11:0] rgb = {vgaR, vgaG, vgaB};
   wire [53:0] outs = {hSync, vSync, vgaR, vgaG, vgaB,
                       An7, An6, An5, An4, An3, An2, An1, An0,
@@ -48,15 +53,17 @@ module tb_top;
                       QuadSpiFlashCS, 22'd0};
 
   // ------------------------------------------------------------ probe pixels
-  // Each probe is checked every time the beam is on it after reset.
-  localparam integer NPROBE = 9;
+  // Each probe is checked every time the beam is on it while the game is in
+  // the probe's state.
+  localparam integer NPROBE = 12;
   integer probe_x   [0:NPROBE-1];
   integer probe_y   [0:NPROBE-1];
   reg [11:0] probe_c [0:NPROBE-1];
+  reg [2:0]  probe_s [0:NPROBE-1];
   integer probe_hits[0:NPROBE-1];
   integer pi;
   initial begin
-    // Level 1 at offset 0, state PLAY (milestone 2: static playfield).
+    // Level 1 at offset 0, state PLAY (frame 2).
     probe_x[0] = 5;   probe_y[0] = 0*32 + 16;  probe_c[0] = COL_GOAL;   // goal row
     probe_x[1] = 5;   probe_y[1] = 5*32 + 16;  probe_c[1] = COL_LOG;    // LOG_A tile 0
     probe_x[2] = 200; probe_y[2] = 5*32 + 16;  probe_c[2] = COL_WATER;  // LOG_A tile 6
@@ -66,6 +73,11 @@ module tb_top;
     probe_x[6] = 5;   probe_y[6] = 14*32 + 16; probe_c[6] = COL_GRASS;  // start row
     probe_x[7] = 639; probe_y[7] = 479;        probe_c[7] = COL_GRASS;  // last visible pixel
     probe_x[8] = 336; probe_y[8] = 14*32 + 16; probe_c[8] = COL_CHICKEN; // chicken on its start tile
+    for (pi = 0; pi < 9; pi = pi + 1) probe_s[pi] = S_PLAY;
+    // Title screen (frame 1): black where the playfield would be.
+    probe_x[9]  = 5;   probe_y[9]  = 0*32 + 16;  probe_c[9]  = COL_BLACK; probe_s[9]  = S_TITLE;
+    probe_x[10] = 336; probe_y[10] = 14*32 + 16; probe_c[10] = COL_BLACK; probe_s[10] = S_TITLE;
+    probe_x[11] = 5;   probe_y[11] = 10*32 + 16; probe_c[11] = COL_BLACK; probe_s[11] = S_TITLE;
     for (pi = 0; pi < NPROBE; pi = pi + 1) probe_hits[pi] = 0;
   end
 
@@ -90,7 +102,8 @@ module tb_top;
       end
       if (dut.bright) begin
         for (pi = 0; pi < NPROBE; pi = pi + 1) begin
-          if (dut.hc == probe_x[pi] + 145 && dut.vc == probe_y[pi] + 35) begin
+          if (dut.hc == probe_x[pi] + 145 && dut.vc == probe_y[pi] + 35 &&
+              dut.state == probe_s[pi]) begin
             probe_hits[pi] = probe_hits[pi] + 1;
             if (rgb !== probe_c[pi]) begin
               errors = errors + 1;
@@ -124,8 +137,23 @@ module tb_top;
     CPU_RESETN = 1'b1;
     repeat (4) @(posedge ClkPort);
     checking = 1'b1;
-    repeat (2 * CYCLES_PER_FRAME) @(posedge ClkPort);
+    if (!LD15 || Ld0) begin
+      errors = errors + 1;
+      $display("FAIL after reset: expected TITLE (LD15) and no lives, LD15=%b Ld0=%b", LD15, Ld0);
+    end
+    // Press BtnC early in frame 1; the game starts at frame 1's tick.
+    repeat (1000) @(posedge ClkPort);
+    BtnC = 1'b1;
+    repeat (200) @(posedge ClkPort);
+    BtnC = 1'b0;
+    repeat (2 * CYCLES_PER_FRAME - 1200) @(posedge ClkPort);
     checking = 1'b0;
+
+    if (!LD14 || LD15 || {Ld2, Ld1, Ld0} !== 3'b111) begin
+      errors = errors + 1;
+      $display("FAIL after BtnC: expected PLAY (LD14) with 3 lives, LD15..9=%b Ld2..0=%b",
+               {LD15, LD14, LD13, LD12, LD11, LD10, LD9}, {Ld2, Ld1, Ld0});
+    end
 
     if (h_toggles < 2 * 2 * 525 - 4) begin
       errors = errors + 1;
